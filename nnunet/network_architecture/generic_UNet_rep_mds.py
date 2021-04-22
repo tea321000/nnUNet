@@ -96,6 +96,33 @@ class ConvDropoutNormNonlin(nn.Module):
             return self.lrelu(self.instnorm(x) + self.instnorm(output1x1))
 
 
+class localizationConvDropoutNormNonlin(ConvDropoutNormNonlin):
+    def forward(self, x):
+        if self.identity:
+            idt = x
+            output1x1 = self.conv1x1(x)
+            # print("1x1", output1x1.shape)
+            x = self.conv(x)
+            # print("3x3", x.shape)
+            if self.dropout is not None:
+                x = self.dropout(x)
+                output1x1 = self.dropout(output1x1)
+            if x.shape != idt.shape:
+                return self.lrelu(self.instnorm(x)), self.lrelu(self.instnorm(output1x1)), self.lrelu(
+                    self.instnorm(x) + self.instnorm(output1x1))
+            else:
+                return self.lrelu(self.instnorm(x)), self.lrelu(self.instnorm(output1x1)), self.lrelu(
+                    self.instnorm(x) + self.instnorm(output1x1) + self.instnorm(idt))
+        else:
+            output1x1 = self.conv1x1(x)
+            # print("1x1", output1x1.shape)
+            x = self.conv(x)
+            # print("3x3", x.shape)
+            if self.dropout is not None:
+                x = self.dropout(x)
+                output1x1 = self.dropout(output1x1)
+            return self.lrelu(self.instnorm(x) + self.instnorm(output1x1))
+
 
 class ConvDropoutNonlinNorm(ConvDropoutNormNonlin):
     def forward(self, x):
@@ -241,7 +268,7 @@ class Generic_UNet_rep_mds(SegmentationNetwork):
             norm_op_kwargs = {'eps': 1e-5, 'affine': True, 'momentum': 0.1}
 
         self.conv_kwargs = {'stride': 1, 'dilation': 1, 'bias': True}
-
+        self.localization_basic_block = localizationConvDropoutNormNonlin
         self.nonlin = nonlin
         self.nonlin_kwargs = nonlin_kwargs
         self.dropout_op_kwargs = dropout_op_kwargs
@@ -320,7 +347,6 @@ class Generic_UNet_rep_mds(SegmentationNetwork):
                 self.td.append(pool_op(pool_op_kernel_sizes[d]))
             input_features = output_features
             output_features = int(np.round(output_features * feat_map_mul_on_downscale))
-
             output_features = min(output_features, self.max_num_features)
 
         # now the bottleneck.
@@ -382,20 +408,18 @@ class Generic_UNet_rep_mds(SegmentationNetwork):
                                   self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs, basic_block=basic_block),
                 StackedConvLayers(nfeatures_from_skip, final_num_features, 1, self.conv_op, self.conv_kwargs,
                                   self.norm_op, self.norm_op_kwargs, self.dropout_op, self.dropout_op_kwargs,
-                                  self.nonlin, self.nonlin_kwargs, basic_block=basic_block)
+                                  self.nonlin, self.nonlin_kwargs, basic_block=self.localization_basic_block)
             ))
 
         for ds in range(len(self.conv_blocks_localization)):
             self.seg_outputs.append(conv_op(self.conv_blocks_localization[ds][-1].output_channels, num_classes,
                                             1, 1, 0, 1, 1, seg_output_use_bias))
-            self.conv_outputs.append(nn.Sequential(self.nonlin(**self.nonlin_kwargs),
-                                                   conv_op(self.conv_blocks_localization[ds][-1].output_channels,
+            self.conv_outputs.append(conv_op(self.conv_blocks_localization[ds][-1].output_channels,
                                                            num_classes,
-                                                           1, 1, 0, 1, 1, seg_output_use_bias)))
-            self.conv1x1_outputs.append(nn.Sequential(self.nonlin(**self.nonlin_kwargs),
-                                                      conv_op(self.conv_blocks_localization[ds][-1].output_channels,
+                                                           1, 1, 0, 1, 1, seg_output_use_bias))
+            self.conv1x1_outputs.append(conv_op(self.conv_blocks_localization[ds][-1].output_channels,
                                                               num_classes,
-                                                              1, 1, 0, 1, 1, seg_output_use_bias)))
+                                                              1, 1, 0, 1, 1, seg_output_use_bias))
 
         self.upscale_logits_ops = []
         cum_upsample = np.cumprod(np.vstack(pool_op_kernel_sizes), axis=0)[::-1]
@@ -415,6 +439,8 @@ class Generic_UNet_rep_mds(SegmentationNetwork):
         self.td = nn.ModuleList(self.td)
         self.tu = nn.ModuleList(self.tu)
         self.seg_outputs = nn.ModuleList(self.seg_outputs)
+        self.conv_outputs = nn.ModuleList(self.conv_outputs)
+        self.conv1x1_outputs = nn.ModuleList(self.conv1x1_outputs)
         if self.upscale_logits:
             self.upscale_logits_ops = nn.ModuleList(
                 self.upscale_logits_ops)  # lambda x:x is not a Module so we need to distinguish here
@@ -426,6 +452,8 @@ class Generic_UNet_rep_mds(SegmentationNetwork):
     def forward(self, x):
         skips = []
         seg_outputs = []
+        conv_outputs = []
+        conv1x1_outputs = []
         for d in range(len(self.conv_blocks_context) - 1):
             x = self.conv_blocks_context[d](x)
             skips.append(x)
@@ -437,12 +465,23 @@ class Generic_UNet_rep_mds(SegmentationNetwork):
         for u in range(len(self.tu)):
             x = self.tu[u](x)
             x = torch.cat((x, skips[-(u + 1)]), dim=1)
-            x = self.conv_blocks_localization[u](x)
+            conv, conv1x1, x = self.conv_blocks_localization[u](x)
             seg_outputs.append(self.final_nonlin(self.seg_outputs[u](x)))
+            conv_outputs.append(self.final_nonlin(self.conv_outputs[u](conv)))
+            conv1x1_outputs.append(self.final_nonlin(self.conv1x1_outputs[u](conv1x1)))
 
+        loss_weights = [0.7, 0.2, 0.1]
         if self._deep_supervision and self.do_ds:
-            return tuple([seg_outputs[-1]] + [i(j) for i, j in
-                                              zip(list(self.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])])
+            # return tuple([seg_outputs[-1]] + [i(j) for i, j in
+            #                                   zip(list(self.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])])
+            return tuple([tuple([seg_outputs[-1]] + [i(j) for i, j in
+                                                    zip(list(self.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])]),
+                         tuple([conv_outputs[-1]] + [i(j) for i, j in
+                                                     zip(list(self.upscale_logits_ops)[::-1],
+                                                         conv_outputs[:-1][::-1])]),
+                         tuple([conv1x1_outputs[-1]] + [i(j) for i, j in
+                                                        zip(list(self.upscale_logits_ops)[::-1],
+                                                            conv1x1_outputs[:-1][::-1])])])
         else:
             return seg_outputs[-1]
 
@@ -480,7 +519,8 @@ class Generic_UNet_rep_mds(SegmentationNetwork):
             for pi in range(len(num_pool_per_axis)):
                 map_size[pi] /= pool_op_kernel_sizes[p][pi]
             num_feat = min(num_feat * 2, max_num_features)
-            num_blocks = (conv_per_stage * 2 + 1) if p < (npool - 1) else conv_per_stage  # conv_per_stage + conv_per_stage for the convs of encode/decode and 1 for transposed conv
+            num_blocks = (conv_per_stage * 2 + 1) if p < (
+                        npool - 1) else conv_per_stage  # conv_per_stage + conv_per_stage for the convs of encode/decode and 1 for transposed conv
             tmp += num_blocks * np.prod(map_size, dtype=np.int64) * num_feat
             if deep_supervision and p < (npool - 2):
                 tmp += np.prod(map_size, dtype=np.int64) * num_classes

@@ -176,7 +176,7 @@ class nnUNetTrainerV2_rep_mds(nnUNetTrainer):
         :return:
         """
         target = target[0]
-        output = output[0]
+        output = output[0][0]
         return super().run_online_evaluation(output, target)
 
     def validate(self, do_mirroring: bool = True, use_sliding_window: bool = True,
@@ -246,7 +246,10 @@ class nnUNetTrainerV2_rep_mds(nnUNetTrainer):
             with autocast():
                 output = self.network(data)
                 del data
-                l = self.loss(output, target)
+                loss_weights = [0.7, 0.2, 0.1]
+                l = loss_weights[0] * self.loss(output[0], target)
+                l += loss_weights[1] * self.loss(output[1], target)
+                l += loss_weights[2] * self.loss(output[2], target)
 
             if do_backprop:
                 self.amp_grad_scaler.scale(l).backward()
