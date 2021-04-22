@@ -193,7 +193,7 @@ class Upsample(nn.Module):
                                          align_corners=self.align_corners)
 
 
-class Generic_UNet_rep_id(SegmentationNetwork):
+class Generic_UNet_rep_mds(SegmentationNetwork):
     DEFAULT_BATCH_SIZE_3D = 2
     DEFAULT_PATCH_SIZE_3D = (64, 192, 160)
     SPACING_FACTOR_BETWEEN_STAGES = 2
@@ -229,7 +229,7 @@ class Generic_UNet_rep_id(SegmentationNetwork):
 
         Questions? -> f.isensee@dkfz.de
         """
-        super(Generic_UNet_rep_id, self).__init__()
+        super(Generic_UNet_rep_mds, self).__init__()
         self.convolutional_upsampling = convolutional_upsampling
         self.convolutional_pooling = convolutional_pooling
         self.upscale_logits = upscale_logits
@@ -295,6 +295,8 @@ class Generic_UNet_rep_id(SegmentationNetwork):
         self.td = []
         self.tu = []
         self.seg_outputs = []
+        self.conv_outputs = []
+        self.conv1x1_outputs = []
 
         output_features = base_num_features
         input_features = input_channels
@@ -386,6 +388,14 @@ class Generic_UNet_rep_id(SegmentationNetwork):
         for ds in range(len(self.conv_blocks_localization)):
             self.seg_outputs.append(conv_op(self.conv_blocks_localization[ds][-1].output_channels, num_classes,
                                             1, 1, 0, 1, 1, seg_output_use_bias))
+            self.conv_outputs.append(nn.Sequential(self.nonlin(**self.nonlin_kwargs),
+                                                   conv_op(self.conv_blocks_localization[ds][-1].output_channels,
+                                                           num_classes,
+                                                           1, 1, 0, 1, 1, seg_output_use_bias)))
+            self.conv1x1_outputs.append(nn.Sequential(self.nonlin(**self.nonlin_kwargs),
+                                                      conv_op(self.conv_blocks_localization[ds][-1].output_channels,
+                                                              num_classes,
+                                                              1, 1, 0, 1, 1, seg_output_use_bias)))
 
         self.upscale_logits_ops = []
         cum_upsample = np.cumprod(np.vstack(pool_op_kernel_sizes), axis=0)[::-1]
@@ -431,7 +441,6 @@ class Generic_UNet_rep_id(SegmentationNetwork):
             seg_outputs.append(self.final_nonlin(self.seg_outputs[u](x)))
 
         if self._deep_supervision and self.do_ds:
-            print(list(self.upscale_logits_ops)[::-1])
             return tuple([seg_outputs[-1]] + [i(j) for i, j in
                                               zip(list(self.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])])
         else:

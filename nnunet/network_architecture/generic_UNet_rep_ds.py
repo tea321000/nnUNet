@@ -23,6 +23,18 @@ from nnunet.network_architecture.neural_network import SegmentationNetwork
 import torch.nn.functional
 
 
+
+
+def ds_conv_hook(module, in_features, out_features):
+    print("conv hooker working")
+    conv_features.append(out_features)
+
+def ds_conv1x1_hook(module, in_features, out_features):
+    print("conv1x1 hooker working")
+    conv1x1_features.append(out_features)
+
+
+
 class ConvDropoutNormNonlin(nn.Module):
     """
     fixes a bug in ConvDropoutNormNonlin where lrelu was used regardless of nonlin. Bad.
@@ -96,7 +108,6 @@ class ConvDropoutNormNonlin(nn.Module):
             return self.lrelu(self.instnorm(x) + self.instnorm(output1x1))
 
 
-
 class ConvDropoutNonlinNorm(ConvDropoutNormNonlin):
     def forward(self, x):
         x = self.conv(x)
@@ -161,11 +172,15 @@ class StackedConvLayers(nn.Module):
             *([basic_block(input_feature_channels, output_feature_channels, self.conv_op,
                            self.conv_kwargs_first_conv,
                            self.norm_op, self.norm_op_kwargs, self.dropout_op, self.dropout_op_kwargs,
-                           self.nonlin, self.nonlin_kwargs)] +
-              [basic_block(output_feature_channels, output_feature_channels, self.conv_op,
-                           self.conv_kwargs,
-                           self.norm_op, self.norm_op_kwargs, self.dropout_op, self.dropout_op_kwargs,
-                           self.nonlin, self.nonlin_kwargs) for _ in range(num_convs - 1)]))
+                           self.nonlin, self.nonlin_kwargs)] + [
+                  basic_block(output_feature_channels, output_feature_channels, self.conv_op,
+                              self.conv_kwargs,
+                              self.norm_op, self.norm_op_kwargs, self.dropout_op, self.dropout_op_kwargs,
+                              self.nonlin, self.nonlin_kwargs) for _ in range(num_convs - 1)]))
+        if self.input_channels > self.output_channels:
+            *_, ds_blocks = self.blocks.children()
+            ds_blocks.conv.register_forward_hook(hook=ds_conv_hook)
+            ds_blocks.conv1x1.register_forward_hook(hook=ds_conv1x1_hook)
 
     def forward(self, x):
         return self.blocks(x)
@@ -193,7 +208,7 @@ class Upsample(nn.Module):
                                          align_corners=self.align_corners)
 
 
-class Generic_UNet_rep_id(SegmentationNetwork):
+class Generic_UNet_rep_ds(SegmentationNetwork):
     DEFAULT_BATCH_SIZE_3D = 2
     DEFAULT_PATCH_SIZE_3D = (64, 192, 160)
     SPACING_FACTOR_BETWEEN_STAGES = 2
@@ -229,7 +244,7 @@ class Generic_UNet_rep_id(SegmentationNetwork):
 
         Questions? -> f.isensee@dkfz.de
         """
-        super(Generic_UNet_rep_id, self).__init__()
+        super(Generic_UNet_rep_ds, self).__init__()
         self.convolutional_upsampling = convolutional_upsampling
         self.convolutional_pooling = convolutional_pooling
         self.upscale_logits = upscale_logits
@@ -295,6 +310,8 @@ class Generic_UNet_rep_id(SegmentationNetwork):
         self.td = []
         self.tu = []
         self.seg_outputs = []
+        self.conv_outputs = []
+        self.conv1x1_outputs = []
 
         output_features = base_num_features
         input_features = input_channels
@@ -386,6 +403,10 @@ class Generic_UNet_rep_id(SegmentationNetwork):
         for ds in range(len(self.conv_blocks_localization)):
             self.seg_outputs.append(conv_op(self.conv_blocks_localization[ds][-1].output_channels, num_classes,
                                             1, 1, 0, 1, 1, seg_output_use_bias))
+            self.conv_outputs.append(nn.Sequential(self.nonlin(**self.nonlin_kwargs), conv_op(self.conv_blocks_localization[ds][-1].output_channels, num_classes,
+                                            1, 1, 0, 1, 1, seg_output_use_bias)))
+            self.conv1x1_outputs.append(nn.Sequential(self.nonlin(**self.nonlin_kwargs), conv_op(self.conv_blocks_localization[ds][-1].output_channels, num_classes,
+                                             1, 1, 0, 1, 1, seg_output_use_bias)))
 
         self.upscale_logits_ops = []
         cum_upsample = np.cumprod(np.vstack(pool_op_kernel_sizes), axis=0)[::-1]
@@ -405,6 +426,8 @@ class Generic_UNet_rep_id(SegmentationNetwork):
         self.td = nn.ModuleList(self.td)
         self.tu = nn.ModuleList(self.tu)
         self.seg_outputs = nn.ModuleList(self.seg_outputs)
+        self.conv_outputs = nn.ModuleList(self.conv_outputs)
+        self.conv1x1_outputs = nn.ModuleList(self.conv1x1_outputs)
         if self.upscale_logits:
             self.upscale_logits_ops = nn.ModuleList(
                 self.upscale_logits_ops)  # lambda x:x is not a Module so we need to distinguish here
@@ -414,8 +437,13 @@ class Generic_UNet_rep_id(SegmentationNetwork):
             # self.apply(print_module_training_status)
 
     def forward(self, x):
+        global conv_features, conv1x1_features
         skips = []
         seg_outputs = []
+        conv_outputs = []
+        conv1x1_outputs = []
+        conv_features = []
+        conv1x1_features = []
         for d in range(len(self.conv_blocks_context) - 1):
             x = self.conv_blocks_context[d](x)
             skips.append(x)
@@ -429,11 +457,17 @@ class Generic_UNet_rep_id(SegmentationNetwork):
             x = torch.cat((x, skips[-(u + 1)]), dim=1)
             x = self.conv_blocks_localization[u](x)
             seg_outputs.append(self.final_nonlin(self.seg_outputs[u](x)))
+            # print("seg_outputs", u)
+            conv_outputs.append(self.final_nonlin(self.conv_outputs[u](conv_features[u])))
+            conv1x1_outputs.append(self.final_nonlin(self.conv1x1_outputs[u](conv1x1_features[u])))
 
+
+        loss_weights = [0.7, 0.2, 0.1]
         if self._deep_supervision and self.do_ds:
-            print(list(self.upscale_logits_ops)[::-1])
             return tuple([seg_outputs[-1]] + [i(j) for i, j in
                                               zip(list(self.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])])
+            # return tuple([loss_weights[0]*seg_outputs[-1] + loss_weights[1]*conv_outputs[-1] + loss_weights[2]*conv1x1_outputs[-1]] + [i(j) for i, j in
+            #                                   zip(list(self.upscale_logits_o)[::-1], loss_weights[0] * seg_outputs[:-1][::-1] + loss_weights[1] * conv_outputs[:-1][::-1] + loss_weights[2] * conv1x1_outputs[:-1][::-1])])
         else:
             return seg_outputs[-1]
 
@@ -471,7 +505,8 @@ class Generic_UNet_rep_id(SegmentationNetwork):
             for pi in range(len(num_pool_per_axis)):
                 map_size[pi] /= pool_op_kernel_sizes[p][pi]
             num_feat = min(num_feat * 2, max_num_features)
-            num_blocks = (conv_per_stage * 2 + 1) if p < (npool - 1) else conv_per_stage  # conv_per_stage + conv_per_stage for the convs of encode/decode and 1 for transposed conv
+            num_blocks = (conv_per_stage * 2 + 1) if p < (
+                    npool - 1) else conv_per_stage  # conv_per_stage + conv_per_stage for the convs of encode/decode and 1 for transposed conv
             tmp += num_blocks * np.prod(map_size, dtype=np.int64) * num_feat
             if deep_supervision and p < (npool - 2):
                 tmp += np.prod(map_size, dtype=np.int64) * num_classes
