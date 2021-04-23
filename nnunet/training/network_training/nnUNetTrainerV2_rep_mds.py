@@ -34,6 +34,7 @@ from torch import nn
 from torch.cuda.amp import autocast
 from nnunet.training.learning_rate.poly_lr import poly_lr
 from batchgenerators.utilities.file_and_folder_operations import *
+torch.autograd.set_detect_anomaly(False)
 
 
 class nnUNetTrainerV2_rep_mds(nnUNetTrainer):
@@ -176,7 +177,7 @@ class nnUNetTrainerV2_rep_mds(nnUNetTrainer):
         :return:
         """
         target = target[0]
-        output = output[0][0]
+        output = output[0]
         return super().run_online_evaluation(output, target)
 
     def validate(self, do_mirroring: bool = True, use_sliding_window: bool = True,
@@ -244,12 +245,17 @@ class nnUNetTrainerV2_rep_mds(nnUNetTrainer):
 
         if self.fp16:
             with autocast():
-                output = self.network(data)
+                output, conv, conv1x1 = self.network(data)
                 del data
+                
+                # l = self.loss(output, target)
                 loss_weights = [0.7, 0.2, 0.1]
-                l = loss_weights[0] * self.loss(output[0], target)
-                l += loss_weights[1] * self.loss(output[1], target)
-                l += loss_weights[2] * self.loss(output[2], target)
+                l = loss_weights[0] * self.loss(output, target)
+                # print("output loss", l)
+                l += loss_weights[1] * self.loss(conv, target)
+                # print("conv loss", l)
+                l += loss_weights[2] * self.loss(conv1x1, target)
+                # print("conv1x1 loss", l)
 
             if do_backprop:
                 self.amp_grad_scaler.scale(l).backward()

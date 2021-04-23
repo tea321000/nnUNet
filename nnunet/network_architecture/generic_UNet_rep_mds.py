@@ -98,30 +98,16 @@ class ConvDropoutNormNonlin(nn.Module):
 
 class localizationConvDropoutNormNonlin(ConvDropoutNormNonlin):
     def forward(self, x):
-        if self.identity:
-            idt = x
-            output1x1 = self.conv1x1(x)
-            # print("1x1", output1x1.shape)
-            x = self.conv(x)
-            # print("3x3", x.shape)
-            if self.dropout is not None:
-                x = self.dropout(x)
-                output1x1 = self.dropout(output1x1)
-            if x.shape != idt.shape:
-                return self.lrelu(self.instnorm(x)), self.lrelu(self.instnorm(output1x1)), self.lrelu(
-                    self.instnorm(x) + self.instnorm(output1x1))
-            else:
-                return self.lrelu(self.instnorm(x)), self.lrelu(self.instnorm(output1x1)), self.lrelu(
-                    self.instnorm(x) + self.instnorm(output1x1) + self.instnorm(idt))
-        else:
-            output1x1 = self.conv1x1(x)
-            # print("1x1", output1x1.shape)
-            x = self.conv(x)
-            # print("3x3", x.shape)
-            if self.dropout is not None:
-                x = self.dropout(x)
-                output1x1 = self.dropout(output1x1)
-            return self.lrelu(self.instnorm(x) + self.instnorm(output1x1))
+        idt = x
+        output1x1 = self.conv1x1(x)
+        # print("1x1", output1x1.shape)
+        x = self.conv(x)
+        # print("3x3", x.shape)
+        if self.dropout is not None:
+            x = self.dropout(x)
+            output1x1 = self.dropout(output1x1)
+        return self.lrelu(x), self.lrelu(output1x1), self.lrelu(
+            self.instnorm(x) + self.instnorm(output1x1) + self.instnorm(idt))
 
 
 class ConvDropoutNonlinNorm(ConvDropoutNormNonlin):
@@ -470,18 +456,17 @@ class Generic_UNet_rep_mds(SegmentationNetwork):
             conv_outputs.append(self.final_nonlin(self.conv_outputs[u](conv)))
             conv1x1_outputs.append(self.final_nonlin(self.conv1x1_outputs[u](conv1x1)))
 
-        loss_weights = [0.7, 0.2, 0.1]
         if self._deep_supervision and self.do_ds:
             # return tuple([seg_outputs[-1]] + [i(j) for i, j in
             #                                   zip(list(self.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])])
-            return tuple([tuple([seg_outputs[-1]] + [i(j) for i, j in
-                                                    zip(list(self.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])]),
-                         tuple([conv_outputs[-1]] + [i(j) for i, j in
-                                                     zip(list(self.upscale_logits_ops)[::-1],
-                                                         conv_outputs[:-1][::-1])]),
-                         tuple([conv1x1_outputs[-1]] + [i(j) for i, j in
-                                                        zip(list(self.upscale_logits_ops)[::-1],
-                                                            conv1x1_outputs[:-1][::-1])])])
+            return tuple([seg_outputs[-1]] + [i(j) for i, j in
+                                                    zip(list(self.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])]),\
+                    tuple([conv_outputs[-1]] + [i(j) for i, j in
+                                        zip(list(self.upscale_logits_ops)[::-1],
+                                            conv_outputs[:-1][::-1])]),\
+                    tuple([conv1x1_outputs[-1]] + [i(j) for i, j in
+                                        zip(list(self.upscale_logits_ops)[::-1],
+                                            conv1x1_outputs[:-1][::-1])])
         else:
             return seg_outputs[-1]
 
