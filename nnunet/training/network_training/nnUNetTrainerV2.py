@@ -36,6 +36,9 @@ from nnunet.training.learning_rate.poly_lr import poly_lr
 from batchgenerators.utilities.file_and_folder_operations import *
 
 
+
+
+
 class nnUNetTrainerV2(nnUNetTrainer):
     """
     Info for Fabian: same as internal nnUNetTrainerV2_2
@@ -413,6 +416,7 @@ class nnUNetTrainerV2(nnUNetTrainer):
         :return:
         """
         super().on_epoch_end()
+        # continue_training = False
         continue_training = self.epoch < self.max_num_epochs
 
         # it can rarely happen that the momentum of nnUNetTrainerV2 is too high for some dataset. If at epoch 100 the
