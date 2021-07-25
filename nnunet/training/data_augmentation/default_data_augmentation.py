@@ -66,7 +66,7 @@ default_3D_augmentation_params = {
     "mirror_axes": (0, 1, 2),
 
     "dummy_2D": False,
-    "mask_was_used_for_normalization": False,
+    "mask_was_used_for_normalization": None,
     "border_mode_data": "constant",
 
     "all_segmentation_labels": None,  # used for cascade
@@ -142,9 +142,12 @@ def get_default_augmentation(dataloader_train, dataloader_val, patch_size, param
     # don't do color augmentations while in 2d mode with 3d data because the color channel is overloaded!!
     if params.get("dummy_2D") is not None and params.get("dummy_2D"):
         tr_transforms.append(Convert3DTo2DTransform())
+        patch_size_spatial = patch_size[1:]
+    else:
+        patch_size_spatial = patch_size
 
     tr_transforms.append(SpatialTransform(
-        patch_size, patch_center_dist_from_border=None, do_elastic_deform=params.get("do_elastic"),
+        patch_size_spatial, patch_center_dist_from_border=None, do_elastic_deform=params.get("do_elastic"),
         alpha=params.get("elastic_deform_alpha"), sigma=params.get("elastic_deform_sigma"),
         do_rotation=params.get("do_rotation"), angle_x=params.get("rotation_x"), angle_y=params.get("rotation_y"),
         angle_z=params.get("rotation_z"), do_scale=params.get("do_scaling"), scale=params.get("scale_range"),
