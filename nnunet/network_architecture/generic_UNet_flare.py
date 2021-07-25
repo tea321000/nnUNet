@@ -403,7 +403,7 @@ class Generic_UNet_flare(SegmentationNetwork):
 
         if self._deep_supervision and self.do_ds:
             return tuple([seg_outputs[-1]] + [i(j) for i, j in
-                                              zip(list(self.upscale_logits_ops)[-2::-1], seg_outputs[:-1][-2::-1])])
+                                              zip(list(self.upscale_logits_ops)[::-1], seg_outputs[-3:-1][::-1])])
         else:
             return seg_outputs[-1]
 
