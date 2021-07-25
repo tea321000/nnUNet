@@ -53,7 +53,7 @@ class CropMultipleOutputLoss(nn.Module):
 
 
     def forward(self, x, y):
-        print("len of output", len(x))
+        # print("len of output", len(x))
         assert isinstance(x, (tuple, list)), "x must be either tuple or list"
         assert isinstance(y, (tuple, list)), "y must be either tuple or list"
         if self.weight_factors is None:
