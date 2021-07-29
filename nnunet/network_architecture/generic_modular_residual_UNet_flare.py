@@ -210,7 +210,6 @@ class ResidualUNetDecoder(nn.Module):
         seg_outputs = []
 
         x = skips[0]  # this is the bottleneck
-
         for i in range(len(self.tus)):
             x = self.tus[i](x)
             x = torch.cat((x, skips[i + 1]), dim=1)
@@ -222,7 +221,6 @@ class ResidualUNetDecoder(nn.Module):
 
         if self.deep_supervision:
             seg_outputs.append(segmentation)
-            print("len of seg_out:", len(seg_outputs))
             return seg_outputs[
                    ::-1]  # seg_outputs are ordered so that the seg from the highest layer is first, the seg from
             # the bottleneck of the UNet last
