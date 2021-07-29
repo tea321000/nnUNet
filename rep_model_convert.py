@@ -69,8 +69,8 @@ if __name__ == '__main__':
             t = gamma / std
             t = np.reshape(t, (-1, 1, 1, 1, 1))
             t = np.tile(t, (1, 1, conv_weight.shape[2], conv_weight.shape[3], conv_weight.shape[4]))
-            state_dict[conv_weight_str] = conv_weight * t
-            state_dict[conv_bias_str] = conv_bias + beta - running_mean * gamma / std
+            state_dict[conv_weight_str] = torch.tensor(conv_weight * t)
+            state_dict[conv_bias_str] = torch.tensor(conv_bias + beta - running_mean * gamma / std)
             del state_dict[gamma_str]
             del state_dict[beta_str]
             del state_dict[running_var_str]
@@ -100,8 +100,8 @@ if __name__ == '__main__':
             t = gamma / std
             t = np.reshape(t, (-1, 1, 1, 1, 1))
             t = np.tile(t, (1, 1, conv_weight.shape[2], conv_weight.shape[3], conv_weight.shape[4]))
-            state_dict[conv_weight_str] = conv_weight * t
-            state_dict[conv_bias_str] = conv_bias + beta - running_mean * gamma / std
+            state_dict[conv_weight_str] = torch.tensor(conv_weight * t)
+            state_dict[conv_bias_str] = torch.tensor(conv_bias + beta - running_mean * gamma / std)
             del state_dict[gamma_str]
             del state_dict[beta_str]
             del state_dict[running_var_str]
