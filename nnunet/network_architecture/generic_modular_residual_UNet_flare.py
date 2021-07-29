@@ -34,7 +34,7 @@ class CutLossPlainConvUNetDecoder(PlainConvUNetDecoder):
         seg_outputs = []
 
         x = skips[0]  # this is the bottleneck
-        print("self.tus", len(self.tus))
+        # print("self.tus", len(self.tus))
         for i in range(len(self.tus)):
             x = self.tus[i](x)
             x = torch.cat((x, skips[i + 1]), dim=1)
