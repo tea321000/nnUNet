@@ -21,8 +21,8 @@ import torch
 from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
 from nnunet.training.loss_functions.deep_supervision import MultipleOutputLoss2
 # from nnunet.utilities.to_torch import maybe_to_torch, to_cuda
-# from nnunet.network_architecture.generic_UNet_flare_V2_deploy import Generic_UNet_flare_V2
-from nnunet.network_architecture.generic_UNet_flare_V2 import Generic_UNet_flare_V2
+from nnunet.network_architecture.generic_UNet_flare_V2_deploy import Generic_UNet_flare_V2
+# from nnunet.network_architecture.generic_UNet_flare_V2 import Generic_UNet_flare_V2
 from nnunet.network_architecture.initialization import InitWeights_He
 from nnunet.network_architecture.neural_network import SegmentationNetwork
 # from nnunet.training.data_augmentation.default_data_augmentation import default_2D_augmentation_params, \
