@@ -25,6 +25,40 @@ from torch.optim import SGD
 from torch.backends import cudnn
 
 
+class CutLossPlainConvUNetDecoder(PlainConvUNetDecoder):
+    def forward(self, skips, gt=None, loss=None):
+        # skips come from the encoder. They are sorted so that the bottleneck is last in the list
+        # what is maybe not perfect is that the TUs and stages here are sorted the other way around
+        # so let's just reverse the order of skips
+        skips = skips[::-1]
+        seg_outputs = []
+
+        x = skips[0]  # this is the bottleneck
+        print("self.tus", len(self.tus))
+        for i in range(len(self.tus)):
+            x = self.tus[i](x)
+            x = torch.cat((x, skips[i + 1]), dim=1)
+            x = self.stages[i](x)
+            if self.deep_supervision and (i != len(self.tus) - 1):
+                tmp = self.deep_supervision_outputs[i](x)
+                if gt is not None:
+                    tmp = loss(tmp, gt)
+                if i >= 2:
+                    seg_outputs.append(tmp)
+
+        segmentation = self.segmentation_output(x)
+
+        if self.deep_supervision:
+            tmp = segmentation
+            if gt is not None:
+                tmp = loss(tmp, gt)
+            seg_outputs.append(tmp)
+            return seg_outputs[::-1]  # seg_outputs are ordered so that the seg from the highest layer is first, the seg from
+            # the bottleneck of the UNet last
+        else:
+            return segmentation
+
+
 class ResidualUNetEncoder(nn.Module):
     def __init__(self, input_channels, base_num_features, num_blocks_per_stage, feat_map_mul_on_downscale,
                  pool_op_kernel_sizes, conv_kernel_sizes, props, default_return_skips=True,
@@ -214,7 +248,7 @@ class ResidualUNetDecoder(nn.Module):
             x = self.tus[i](x)
             x = torch.cat((x, skips[i + 1]), dim=1)
             x = self.stages[i](x)
-            if self.deep_supervision and (i != len(self.tus) - 1) and i > 2:
+            if self.deep_supervision and (i != len(self.tus) - 1):
                 seg_outputs.append(self.deep_supervision_outputs[i](x))
 
         segmentation = self.segmentation_output(x)
@@ -326,7 +360,7 @@ class FabiansUNet_flare(SegmentationNetwork):
         props['dropout_op_kwargs']['p'] = 0
         if props_decoder is None:
             props_decoder = props
-        self.decoder = PlainConvUNetDecoder(self.encoder, num_classes, num_blocks_per_stage_decoder, props_decoder,
+        self.decoder = CutLossPlainConvUNetDecoder(self.encoder, num_classes, num_blocks_per_stage_decoder, props_decoder,
                                             deep_supervision, upscale_logits)
         if initializer is not None:
             self.apply(initializer)
