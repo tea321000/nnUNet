@@ -207,6 +207,7 @@ class nnUNetTrainerV2_flare(nnUNetTrainerV2):
             dropout_op = nn.Dropout2d
             norm_op = nn.InstanceNorm2d
 
+        # norm_op_kwargs = {'eps': 1e-5, 'affine': True}
         norm_op_kwargs = {'eps': 1e-5, 'affine': True, 'track_running_stats': True}
         dropout_op_kwargs = {'p': 0, 'inplace': True}
         net_nonlin = nn.LeakyReLU
