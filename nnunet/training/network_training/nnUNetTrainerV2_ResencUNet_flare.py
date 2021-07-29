@@ -41,6 +41,21 @@ class CropMultipleOutputLoss(nn.Module):
         # print("weight_factors", self.weight_factors)
         self.loss = loss
 
+    def forward(self, x, y):
+        # print("len of output", len(x))
+        assert isinstance(x, (tuple, list)), "x must be either tuple or list"
+        assert isinstance(y, (tuple, list)), "y must be either tuple or list"
+        if self.weight_factors is None:
+            weights = [1] * len(x)
+        else:
+            weights = self.weight_factors
+
+        l = weights[0] * self.loss(x[0], y[0])
+        for i in range(1, len(x)):
+            if weights[i] != 0:
+                l += weights[i] * self.loss(x[i], y[i])
+        return l
+
 
 def get_default_network_config(dim=2, dropout_p=None, nonlin="LeakyReLU", norm_type="bn"):
     """
