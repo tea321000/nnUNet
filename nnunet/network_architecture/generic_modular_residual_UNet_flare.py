@@ -215,7 +215,7 @@ class ResidualUNetDecoder(nn.Module):
             x = self.tus[i](x)
             x = torch.cat((x, skips[i + 1]), dim=1)
             x = self.stages[i](x)
-            if self.deep_supervision and (i != len(self.tus) - 1) and i >= 2:
+            if self.deep_supervision and (i != len(self.tus) - 1) and i > 2:
                 seg_outputs.append(self.deep_supervision_outputs[i](x))
 
         segmentation = self.segmentation_output(x)

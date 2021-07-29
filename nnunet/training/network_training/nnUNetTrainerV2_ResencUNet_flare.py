@@ -25,6 +25,7 @@ from batchgenerators.utilities.file_and_folder_operations import *
 from nnunet.training.dataloading.dataset_loading import unpack_dataset
 from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
 from nnunet.network_architecture.neural_network import SegmentationNetwork
+from nnunet.training.loss_functions.dice_loss import DC_and_topk_loss
 
 
 class CropMultipleOutputLoss(nn.Module):
@@ -92,6 +93,13 @@ def get_default_network_config(dim=2, dropout_p=None, nonlin="LeakyReLU", norm_t
 
 
 class nnUNetTrainerV2_ResencUNet_flare(nnUNetTrainerV2):
+    def __init__(self, plans_file, fold, output_folder=None, dataset_directory=None, batch_dice=True, stage=None,
+                 unpack_data=True, deterministic=True, fp16=False):
+        super().__init__(plans_file, fold, output_folder, dataset_directory, batch_dice, stage, unpack_data,
+                         deterministic, fp16)
+        self.loss = DC_and_topk_loss({'batch_dice': self.batch_dice, 'smooth': 1e-5, 'do_bg': False},
+                                     {'k': 10})
+
     def initialize(self, training=True, force_load_plans=False):
         """
         - replaced get_default_augmentation with get_moreDA_augmentation
