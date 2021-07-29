@@ -36,8 +36,8 @@ if __name__ == '__main__':
     parse_args = parse_arguments()
     model = torch.load(os.path.join(parse_args.checkpoint, parse_args.name))
     state_dict = model['state_dict']
-    for key in state_dict:
-        print(key)
+    for key, val in model['state_dict']:
+        print(key, val.shape)
     # encode stage:
     for i in range(6):
         for j in range(2):
@@ -110,6 +110,6 @@ if __name__ == '__main__':
 
     model['state_dict'] = state_dict
     print("after modify")
-    for key in model['state_dict']:
-        print(key)
+    for key,val in model['state_dict']:
+        print(key, val.shape)
     torch.save(model, os.path.join(parse_args.output, parse_args.out_name))
