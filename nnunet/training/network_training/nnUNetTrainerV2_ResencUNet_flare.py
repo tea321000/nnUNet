@@ -16,6 +16,7 @@ from typing import Tuple
 import numpy as np
 import torch
 from torch import nn
+# from nnunet.network_architecture.generic_modular_residual_UNet_flare_deploy import FabiansUNet_flare
 from nnunet.network_architecture.generic_modular_residual_UNet_flare import FabiansUNet_flare
 from nnunet.network_architecture.initialization import InitWeights_He
 from nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
