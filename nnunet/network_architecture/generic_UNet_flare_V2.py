@@ -51,8 +51,23 @@ class ConvDropoutNormNonlin(nn.Module):
         self.conv_kwargs = conv_kwargs
         self.conv_op = conv_op
         self.norm_op = norm_op
+        conv1_kwargs = conv_kwargs
+        conv2_kwargs = conv_kwargs
+        conv3_kwargs = conv_kwargs
+        conv1_kwargs['kernel_size'] = (3, 1, 1)
+        conv1_kwargs['padding'] = (1, 0, 0)
+        conv2_kwargs['kernel_size'] = (1, 3, 1)
+        conv2_kwargs['padding'] = (0, 1, 0)
+        conv3_kwargs['kernel_size'] = (1, 1, 3)
+        conv3_kwargs['padding'] = (0, 0, 1)
 
-        self.conv = self.conv_op(input_channels, output_channels, **self.conv_kwargs)
+
+        self.conv = nn.Sequential(
+            self.conv_op(in_channels=input_channels, out_channels=output_channels, **conv1_kwargs),
+            self.conv_op(in_channels=output_channels, out_channels=output_channels, **conv2_kwargs),
+            self.conv_op(in_channels=output_channels, out_channels=output_channels, **conv3_kwargs),
+        )
+        # self.conv = self.conv_op(input_channels, output_channels, **self.conv_kwargs)
         if self.dropout_op is not None and self.dropout_op_kwargs['p'] is not None and self.dropout_op_kwargs[
             'p'] > 0:
             self.dropout = self.dropout_op(**self.dropout_op_kwargs)
@@ -400,7 +415,7 @@ class Generic_UNet_flare_V2(SegmentationNetwork):
             x = torch.cat((x, skips[-(u + 1)]), dim=1)
             x = self.conv_blocks_localization[u](x)
             if u >= 2:
-                seg_outputs.append(self.final_nonlin(self.seg_outputs[u-2](x)))
+                seg_outputs.append(self.final_nonlin(self.seg_outputs[u - 2](x)))
 
         # print("len of seg_outs", len(self.seg_outputs), len(seg_outputs))
         if self._deep_supervision and self.do_ds:
@@ -443,7 +458,8 @@ class Generic_UNet_flare_V2(SegmentationNetwork):
             for pi in range(len(num_pool_per_axis)):
                 map_size[pi] /= pool_op_kernel_sizes[p][pi]
             num_feat = min(num_feat * 2, max_num_features)
-            num_blocks = (conv_per_stage * 2 + 1) if p < (npool - 1) else conv_per_stage  # conv_per_stage + conv_per_stage for the convs of encode/decode and 1 for transposed conv
+            num_blocks = (conv_per_stage * 2 + 1) if p < (
+                        npool - 1) else conv_per_stage  # conv_per_stage + conv_per_stage for the convs of encode/decode and 1 for transposed conv
             tmp += num_blocks * np.prod(map_size, dtype=np.int64) * num_feat
             if deep_supervision and p < (npool - 2):
                 tmp += np.prod(map_size, dtype=np.int64) * num_classes
